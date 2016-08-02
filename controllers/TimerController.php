@@ -14,7 +14,6 @@ class TimerController extends \yii\console\Controller
         $updateNum = 0;
         foreach ($rows as $row) {
             $random = rand(1, 100000);
-            $row->setScenario('timer');
             
             $row->setAttributes(['rank'=>$random]);
             if(!$row->save()){
