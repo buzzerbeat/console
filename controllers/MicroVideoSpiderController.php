@@ -20,9 +20,13 @@ use microvideo\models\MvVideo;
 use microvideo\models\MvVideoCategoryRel;
 use microvideo\models\MvVideoCount;
 use microvideo\models\MvVideoKeywordRel;
+use microvideo\models\MvTag;
 use yii\console\Controller;
 use linslin\yii2\curl;
 use yii\helpers\Json;
+use app\models\Tag;
+use backend\models\microvideo\MvTagRel;
+use backend\models\microvideo\MvVideoTagRel;
 
 class MicroVideoSpiderController extends BaseController
 {
@@ -85,6 +89,21 @@ class MicroVideoSpiderController extends BaseController
         31=>'男神',
         59=>'美食',
     ];
+    
+    static $yiDianCatArr = [
+        3977527910=>'爆笑',
+        3977527926=>'综艺范',
+        100140102502=>'推荐',
+        3977527942=>'微电影',
+        3977527958=>'妹纸',
+        3977527974=>'现场',
+        3977527990=>'猎奇',
+        3977528006=>'动物世界',
+        3977528022=>'生活',
+        3977528038=>'悦耳',
+        3977528054=>'运动',
+        3977528070=>'萌娃宠物',
+    ];
 
     /**
      *
@@ -114,7 +133,7 @@ class MicroVideoSpiderController extends BaseController
             exit(-1);
         }
         $errors = [];
-
+        $curl = new curl\Curl();
         try {
         foreach (self::$netEaseCatArr as $oneCat => $val) {
             if (!empty($cat) && $oneCat != $cat) {
@@ -123,105 +142,50 @@ class MicroVideoSpiderController extends BaseController
 
             for ($i = 0; $i < $page; $i++) {
                 $url = "http://c.m.163.com/nc/video/Tlist/{$oneCat}/" . ($limit * $i) . "-" . $limit . ".html";
-                $curl = new curl\Curl();
+                
 
                 $response = $curl->get($url);
                 $respJson = Json::decode($response, true);
                 $vIds = [];
                 foreach ($respJson[$oneCat] as $oneVideo) {
-                    $video = Video::findOne(['key' => 'netease/' . $oneVideo["vid"]]);
-                    if (!$video) {
-                        $video = new Video();
-                        $video->key = 'netease/' . $oneVideo["vid"];
-                        $video->status = Video::STATUS_ACTIVE;
-                        $video->url = $oneVideo["mp4_url"];
-                        $video->m3u8_url = $oneVideo["m3u8_url"];
-                        $video->site_url = "http://3g.163.com/ntes/special/0034073A/wechat_article.html?spst=0&spss=newsapp&spsw=1&spsf=qq&videoid=" . $oneVideo["vid"] . "&token=null";
-                        $video->desc = $oneVideo["topicDesc"];
-                        $video->width = 0;
-                        $video->height = 0;
-                        $video->length = $oneVideo["length"];
-                        $video->add_time = time();
-                        $video->pub_time = time();
-
-                        $coverForm = new ImageForm();
-                        $coverForm->url = $oneVideo["cover"];
-                        $cover = $coverForm->save();
-                        $video->cover_img = empty($cover) ? 0 : $cover->id;
-
-                        if (!$video->save()) {
-                            $errors = array_merge($errors, $video->getErrors());
-                            $this->error($errors);
-                            continue;
-                        }
-
-                    }
-
-                    $mvVideo = MvVideo::findOne(['video_id' => $video->id]);
+                    
+                    $siteUrl = "http://3g.163.com/ntes/special/0034073A/wechat_article.html?spst=0&spss=newsapp&spsw=1&spsf=qq&videoid=" . $oneVideo["vid"] . "&token=null";
+                    $createTime = strtotime($oneVideo['ptime']);
+                    $digNum = $buryNum = 0;
+                    $commentNum = 20;//@todo 缺失。小于20将被过滤，所以置为20，该字段只用于过滤，不入库
+                    $mvVideo = $this->saveVideo(
+                        'netease/' . $oneVideo["vid"],
+                        $oneVideo["mp4_url"],
+                        $siteUrl,
+                        $oneVideo["title"],
+                        $oneVideo["description"],
+                        $oneVideo["cover"],
+                        'netease',
+                        $oneVideo["length"],
+                        0,//暂缺
+                        0,//暂缺
+                        $oneVideo['m3u8_url'],
+                        $digNum,
+                        $buryNum,
+                        $oneVideo['playCount'],
+                        $commentNum,
+                        $createTime,
+                        $errors
+                    );
                     if (!$mvVideo) {
-                        $mvVideo = new MvVideo();
-                        $mvVideo->key = 'netease/' . $oneVideo["vid"];
-                        $mvVideo->video_id = $video->id;
-                        $mvVideo->status = MvVideo::STATUS_ACTIVE;
-                        $mvVideo->create_time = time();
-                        $mvVideo->update_time = time();
-                        $mvVideo->source_url = "http://3g.163.com/ntes/special/0034073A/wechat_article.html?spst=0&spss=newsapp&spsw=1&spsf=qq&videoid=" . $oneVideo["vid"] . "&token=null";
-                        $mvVideo->desc = $oneVideo["description"];
-                        $mvVideo->title = $oneVideo["title"];
-
-                        if (!$mvVideo->save()) {
-                            $errors = array_merge($errors, $mvVideo->getErrors());
+                        if (!empty($errors)) {
                             $this->error($errors);
-                            continue;
                         }
+                        continue;
                     }
 
                     $keywordArr = [self::$netEaseCatArr[$oneCat]];
+
                     if (isset($oneVideo["topicName"])) {
-                        $keywordArr[] = $oneVideo["topicName"];
+                        $keywordArr[] = 'u_' . $oneVideo["topicName"];
                     }
-                    foreach ($keywordArr as $keyword) {
-                        $mvKeyword = MvKeyword::findOne(['name' => $keyword]);
-                        if (!$mvKeyword) {
-                            $mvKeyword = new MvKeyword();
-                            $mvKeyword->name = $keyword;
-                            if (!$mvKeyword->save()) {
-                                $errors = array_merge($errors, $mvKeyword->getErrors());
-                                $this->error($errors);
-                                continue;
-                            }
-                        }
+                    $this->saveTag($keywordArr, $mvVideo->id, $errors);
 
-                        $keywordRel = MvVideoKeywordRel::findOne([
-                            'video_id' => $mvVideo->id,
-                            'keyword_id' => $mvKeyword->id,
-                        ]);
-                        if (!$keywordRel) {
-                            $keywordRel = new MvVideoKeywordRel();
-                            $keywordRel->video_id = $mvVideo->id;
-                            $keywordRel->keyword_id = $mvKeyword->id;
-                            if (!$keywordRel->save()) {
-                                $errors = array_merge($errors, $keywordRel->getErrors());
-                                $this->error($errors);
-                                continue;
-                            }
-                        }
-                    }
-
-                    $videoCount = MvVideoCount::findOne(['video_id' => $mvVideo->id]);
-                    if (!$videoCount) {
-                        $videoCount = new MvVideoCount();
-                        $videoCount->video_id = $mvVideo->id;
-                    }
-                    $videoCount->dig = 0;
-                    $videoCount->like = 0;
-                    $videoCount->bury = 0;
-                    $videoCount->played = $oneVideo['playCount'];
-                    if (!$videoCount->save()) {
-                        $errors = array_merge($errors, $videoCount->getErrors());
-                        $this->error($errors);
-                        continue;
-                    }
                     $vIds[] = $mvVideo->id;
                     echo $oneVideo["title"] . " >>> Done\n";
 
@@ -254,6 +218,7 @@ class MicroVideoSpiderController extends BaseController
             exit(-1);
         }
         $errors = [];
+        $curl = new curl\Curl();
         try {
             foreach (self::$catArr as $oneCat => $val) {
                 if (!empty($cat) && $oneCat != $cat) {
@@ -273,7 +238,7 @@ class MicroVideoSpiderController extends BaseController
                     }
                     $devicePrefix = "http://ic.snssdk.com/api/news/feed/v38/?iid=4818730159&os_version=9.3.2&aid=13&device_id=15388100121&app_name=news_article&channel=App%20Store&device_platform=iphone&idfa=D3DD2A38-5E20-458C-A3DE-AC693C5CFBE6&vid=42B539FB-B5A6-4A8B-9212-228B1FD13307&openudid=4add9b51319923895e1c98447d94833689131208&device_type=iPhone%206&ab_feature=z1&ab_group=z1&idfv=42B539FB-B5A6-4A8B-9212-228B1FD13307&ssmix=a&version_code=5.5.8&resolution=750*1334&ab_client=a1,b1,b7,f1,f5,e1&ac=WIFI&LBS_status=authroize";
                     $url = $devicePrefix . "&category={$oneCat}&city=&concern_id=&count=20&detail=1&image=1&language=zh-Hans-CN&last_refresh_sub_entrance_interval=" . time() . "&loc_mode=1&" . $pageParam . "&refer=1&strict=0";
-                    $curl = new curl\Curl();
+                    
                     $response = $curl->get($url);
                     $respJson = Json::decode($response, true);
                     $vIds = [];
@@ -296,110 +261,48 @@ class MicroVideoSpiderController extends BaseController
                                         $realVideoUrl = $vUrl;
                                     }
                                 }
-
-                                $video = Video::findOne(['key' => 'toutiao/' . $oneJson["video_id"]]);
-                                if (!$video) {
-                                    $video = new Video();
-                                    $video->key = 'toutiao/' . $oneJson["video_id"];
-                                    $video->status = Video::STATUS_ACTIVE;
-                                    $video->url = $realVideoUrl;
-                                    $video->site_url = $oneJson["display_url"];
-                                    $video->desc = $oneJson["title"];
-                                    $video->width = $oneJson["middle_image"]['width'];
-                                    $video->height = $oneJson["middle_image"]['height'];
-                                    $video->length = $oneJson["video_duration"];
-                                    $video->add_time = time();
-                                    $video->pub_time = time();
-                                    $video->regex_setting = 3;
-
-                                    $coverForm = new ImageForm();
-                                    $coverForm->url = $oneJson["large_image_list"][0]['url'];
-                                    $icon = $coverForm->save();
-                                    $video->cover_img = empty($icon) ? 0 : $icon->id;
-
-                                    if (!$video->save()) {
-                                        $errors = array_merge($errors, $video->getErrors());
-                                        $this->error($errors);
-                                        continue;
-                                    }
-
-                                }
-
-                                $mvVideo = MvVideo::findOne(['video_id' => $video->id]);
+                                $createTime = $oneJson['publish_time'];
+                                //尝试保存视频
+                                $playNum = isset($oneJson['video_detail_info']) ? $oneJson['video_detail_info']['video_watch_count'] : 0;
+                                $mvVideo = $this->saveVideo(
+                                    'toutiao/' . $oneJson["video_id"],
+                                    $realVideoUrl,
+                                    $oneJson["display_url"],
+                                    $oneJson["title"],
+                                    $oneJson["abstract"],
+                                    $oneJson["large_image_list"][0]['url'],
+                                    'toutiao',
+                                    $oneJson["video_duration"],
+                                    $oneJson["middle_image"]['width'],
+                                    $oneJson["middle_image"]['height'],
+                                    '',//m3u8
+                                    $oneJson['digg_count'],
+                                    $oneJson['bury_count'],
+                                    $playNum,
+                                    $oneJson['comment_count'],
+                                    $createTime,
+                                    $errors
+                                );
                                 if (!$mvVideo) {
-                                    $mvVideo = new MvVideo();
-                                    $mvVideo->key = 'toutiao/' . $oneJson["video_id"];
-                                    $mvVideo->video_id = $video->id;
-                                    $mvVideo->status = MvVideo::STATUS_ACTIVE;
-                                    $mvVideo->create_time = time();
-                                    $mvVideo->update_time = time();
-                                    $mvVideo->source_url = $oneJson["display_url"];
-                                    $mvVideo->desc = $oneJson["abstract"];
-                                    $mvVideo->title = $oneJson["title"];
-
-                                    if (!$mvVideo->save()) {
-                                        $errors = array_merge($errors, $mvVideo->getErrors());
+                                    if (!empty($errors)) {
                                         $this->error($errors);
-                                        continue;
-
                                     }
-                                }
-
-                                $keywordArr = [self::$catArr[$oneCat]];
-                                if (isset($oneJson["media_info"])) {
-                                    $keywordArr[] = $oneJson["media_info"]["name"];
-                                }
-                                if (!empty($oneJson["keywords"])) {
-                                    $keywordArr[] = array_merge($keywordArr, explode(',', $oneJson["keywords"]));
-                                        foreach ($keywordArr as $keyword) {
-                                            $mvKeyword = MvKeyword::findOne(['name' => $keyword]);
-                                            if (!$mvKeyword) {
-                                                $mvKeyword = new MvKeyword();
-                                                $mvKeyword->name = $keyword;
-                                                if (!$mvKeyword->save()) {
-                                                    $errors = array_merge($errors, $mvKeyword->getErrors());
-                                                    $this->error($errors);
-                                                    continue;
-                                                }
-                                            }
-
-                                            $keywordRel = MvVideoKeywordRel::findOne([
-                                                'video_id' => $mvVideo->id,
-                                                'keyword_id' => $mvKeyword->id,
-                                            ]);
-                                            if (!$keywordRel) {
-                                                $keywordRel = new MvVideoKeywordRel();
-                                                $keywordRel->video_id = $mvVideo->id;
-                                                $keywordRel->keyword_id = $mvKeyword->id;
-                                                if (!$keywordRel->save()) {
-                                                    $errors = array_merge($errors, $keywordRel->getErrors());
-                                                    $this->error($errors);
-                                                    continue;
-                                                }
-                                            }
-                                        }
-                                }
-
-                                $videoCount = MvVideoCount::findOne(['video_id' => $mvVideo->id]);
-                                if (!$videoCount) {
-                                    $videoCount = new MvVideoCount();
-                                    $videoCount->video_id = $mvVideo->id;
-                                }
-                                $videoCount->dig = $oneJson['digg_count'];
-                                $videoCount->like = $oneJson['like_count'];
-                                $videoCount->bury = $oneJson['bury_count'];
-                                $videoCount->played = 0;
-                                if (!$videoCount->save()) {
-                                    $errors = array_merge($errors, $videoCount->getErrors());
-                                    $this->error($errors);
                                     continue;
                                 }
-
+                                
+                                $keywordArr = [self::$catArr[$oneCat]];
+                                if (isset($oneJson["media_info"])) {
+                                    $keywordArr[] = 'u_' . $oneJson["media_info"]["name"];
+                                }
+                                if (!empty($oneJson["keywords"])) {
+                                    $keywordArr = array_merge($keywordArr, explode(',', $oneJson["keywords"]));
+                                }
+                                
+                                $this->saveTag($keywordArr, $mvVideo->id, $errors);
 
                             } else {
                                 throw new \yii\base\Exception("Command `node` cannot found.");
                             }
-
 
                             $vIds[] = $mvVideo->id;
 
@@ -455,19 +358,38 @@ class MicroVideoSpiderController extends BaseController
                         $title = $oneElem['recommend_caption'];
                         $oneElem = $oneElem['media'];
                         $picSizes = explode('*', $oneElem['pic_size']);
-                        //$key, $url, $siteUrl, $title, $desc, $coverUrl, $site, $length = 0, $vWidth = 0, $vHeight = 0, $dig = 0, $commentCount = 0, &$errors
-                        $videoAr = $this->saveVideo('meipai/'. $oneElem['id'], $oneElem['video'], $oneElem['url'], $title, $oneElem['caption'],
-                            $oneElem['cover_pic'], 'meipai',
-                            isset($oneElem['time']) ? $oneElem['time'] : 0,
-                            $picSizes[0], $picSizes[1], $oneElem['likes_count'],$oneElem['comments_count'], $errors);
-                       if (!$videoAr) {
+                        $createTime = $oneElem['created_at'];
+                        $length = isset($oneElem['time']) ? $oneElem['time'] : 0;
+                        $videoAr = $this->saveVideo(
+                            'meipai/'. $oneElem['id'], 
+                            $oneElem['video'],
+                            $oneElem['url'],
+                            $title,
+                            $oneElem['caption'],
+                            $oneElem['cover_pic'],
+                            'meipai',
+                            $length,
+                            $picSizes[0], 
+                            $picSizes[1],
+                            '',
+                            $oneElem['likes_count'],
+                            0,//bury
+                            0,//play
+                            $oneElem['comments_count'],
+                            $createTime,
+                            $errors
+                        );
+                        if (!$videoAr) {
                            if (!empty($errors)) {
                                $this->error($errors);
                            }
-                            continue;
+                           continue;
                         }
-
-                        $this->saveTag([self::$meiPaiCatArr[$cat]], $videoAr->id, $errors);
+                        $tags = [self::$meiPaiCatArr[$cat]];
+                        if(isset($oneElem['user']) && !empty($oneElem['user']['screen_name'])){
+                            $tags[] = 'u_' . $oneElem['user']['screen_name'];
+                        }
+                        $this->saveTag($tags, $videoAr->id, $errors);
                         $vIds[] = $videoAr->id;
                         echo "Video " . $title. " >>> Done.\n";
 //                        QsCollectHelper::saveHistory($collectEventId, 'meipai', $oneElem['url'], 'meipai' . '_' . $oneElem['id'], 1, $resourceAr->id, Resource::TYPE_VIDEO, $resourceAr->getErrors());
@@ -517,20 +439,31 @@ class MicroVideoSpiderController extends BaseController
                     foreach ($result['result'] as $one) {
                         if (isset($one['channel']['stream'])) {
                             $siteUrl = 'http://m.miaopai.com/show/channel/' . $one['channel']['scid'];
+                            
                             $dig = intval(str_replace(",","",$one['channel']['stat']['lcnt']));
+                            if(strstr($dig, '万')){
+                            	$dig = $dig * 10000;
+                            }
+                            $bury = intval($one['channel']['stat']['hcnt']);
+                            $play = $one['channel']['stat']['vcnt'];
+                            $createTime = $one['channel']['ext']['finishTime'];
                             $videoAr = $this->saveVideo(
                                 'miaopai/' . $one['channel']['scid'],
                                 $one['channel']['stream']['base'],
                                 $siteUrl,
-                                $one['channel']['ext']['t'],
                                 $one['channel']['ext']['ft'],
+                                $one['channel']['ext']['t'],
                                 $one['channel']['pic']['base'] . $one['channel']['pic']['m'],
                                 'miaopai',
                                 $one['channel']['ext']['length'],
                                 $one['channel']['ext']['w'],
                                 $one['channel']['ext']['h'],
+                                '',//m3u8
                                 $dig,
+                                $bury,
+                                $play,
                                 $one['channel']['stat']['ccnt'],
+                                $createTime,
                                 $errors
                             );
                             if (!$videoAr) {
@@ -541,6 +474,9 @@ class MicroVideoSpiderController extends BaseController
                             }
                             $tags = isset($one['channel']['topicinfo']) ? $one['channel']['topicinfo'] : [];
                             $tags[] = self::$miaoPaiCatArr[$cat];
+                            if(isset($one['channel']['ext']['owner']) && !empty($one['channel']['ext']['owner']['nick'])){
+                            	$tags[] = 'u_' . $one['channel']['ext']['owner']['nick'];
+                            }
                             $this->saveTag($tags, $videoAr->id, $errors);
                             $vIds[] = $videoAr->id;
                             echo "Video " . $one['channel']['ext']['ft']. " >>> Done.\n";
@@ -563,18 +499,32 @@ class MicroVideoSpiderController extends BaseController
 
     }
 
-    private function saveTag($tags, $videoId, &$errors)
+    private function saveTag($keywords, $videoId, &$errors)
     {
-        foreach($tags as $tag) {
-            $mvKeyword = MvKeyword::findOne(['name' => $tag]);
+        foreach($keywords as $keyword) {
+            //首先判断是否符合要求
+            //只能是汉字，字母，数字或_-
+            if(!preg_match('/^[\x{4e00}-\x{9fa5}A-Z0-9-a-z_-]+$/u', $keyword)){
+                continue;
+            }
+            //汉字超过7个过滤
+            if(preg_match('/[\x{4e00}-\x{9fa5}]{8,}/u', $keyword)){
+                continue;
+            }
+            
+            $mvKeyword = MvKeyword::findOne(['name' => $keyword]);
+            //判断是否是过滤
             if (!$mvKeyword) {
                 $mvKeyword = new MvKeyword();
-                $mvKeyword->name = $tag;
+                $mvKeyword->name = $keyword;
                 if (!$mvKeyword->save()) {
                     $errors = array_merge($errors, $mvKeyword->getErrors());
                     $this->error($errors);
                     continue;
                 }
+            }
+            elseif($mvKeyword->is_filter == 1){
+            	continue;
             }
 
             $keywordRel = MvVideoKeywordRel::findOne([
@@ -591,11 +541,42 @@ class MicroVideoSpiderController extends BaseController
                     continue;
                 }
             }
+            if(substr($keyword, 0, 2) == 'u_'){
+            	continue;
+            }
+            //增加tag
+            $tag = MvTag::findOne($mvKeyword->tag_id);
+            if(empty($tag)){
+                $tag = MvTag::find()->where(['name'=>$mvKeyword->name])->one();
+                if(empty($tag)){
+                    //新增tag
+                    $tag = new MvTag();
+                    $tag->name = $mvKeyword->name;
+                    if(!$tag->save()){
+                        $errors = array_merge($errors, $tag->getErrors());
+                    	$this->error($errors);
+                    	continue;
+                    }
+                }
+                $mvKeyword->tag_id = $tag->id;
+                $mvKeyword->save();
+            }
+            $tagRel = MvVideoTagRel::findOne(['mv_tag_id'=>$tag->id, 'mv_video_id'=>$videoId]);
+            if(empty($tagRel)){
+                $tagRel = new MvVideoTagRel();
+                $tagRel->mv_tag_id = $tag->id;
+                $tagRel->mv_video_id = $videoId;
+                if(!$tagRel->save()){
+                	$errors = array_merge($errors, $tagRel->getErrors());
+                	$this->error($errors);
+                	continue;
+                }
+            }
         }
         return;
     }
 
-    private function saveVideo($key, $url, $siteUrl, $title, $desc, $coverUrl, $site, $length = 0, $vWidth = 0, $vHeight = 0, $dig = 0, $commentCount = 0, &$errors) {
+    private function saveVideo($key, $url, $siteUrl, $title, $desc, $coverUrl, $site, $length = 0, $vWidth = 0, $vHeight = 0, $m3u8 = '', $dig = 0, $bury = 0, $playCount = 0, $commentCount = 0, $createTime, &$errors) {
 
         if ($commentCount < 20) {
             return false;
@@ -603,6 +584,8 @@ class MicroVideoSpiderController extends BaseController
         if (empty($url) || empty($siteUrl)) {
             return false;
         }
+        $title = strip_tags($title);
+        $desc = strip_tags($desc);
 
         $video = Video::findOne(['key' => $key]);
         if (!$video) {
@@ -610,10 +593,9 @@ class MicroVideoSpiderController extends BaseController
             $video->key = $key;
             $video->status = Video::STATUS_ACTIVE;
             $video->url = $url;
+            $video->m3u8_url = $m3u8;
             $video->site_url = $siteUrl;
             $video->desc = $desc;
-            $video->width = $vWidth;
-            $video->height = $vHeight;
             $video->length = $length;
             $video->add_time = time();
             $video->pub_time = time();
@@ -623,6 +605,8 @@ class MicroVideoSpiderController extends BaseController
             $coverForm->url = $coverUrl;
             $cover = $coverForm->save();
             $video->cover_img = empty($cover) ? 0 : $cover->id;
+            $video->width = !empty($vWidth) ? $vWidth : (!empty($cover) ? $cover->width : 0);
+            $video->height = !empty($vHeight) ? $vHeight : (!empty($cover) ? $cover->height : 0);
 
             if (!$video->save()) {
                 $errors = array_merge($errors, $video->getErrors());
@@ -635,12 +619,10 @@ class MicroVideoSpiderController extends BaseController
         $mvVideo = MvVideo::findOne(['video_id' => $video->id]);
         if (!$mvVideo) {
             $mvVideo = new MvVideo();
-            $mvVideo->key = $key;
             $mvVideo->video_id = $video->id;
             $mvVideo->status = MvVideo::STATUS_ACTIVE;
-            $mvVideo->create_time = time();
+            $mvVideo->create_time = !empty($createTime) ? $createTime : time();
             $mvVideo->update_time = time();
-            $mvVideo->source_url = $siteUrl;
             $mvVideo->desc = $desc;
             $mvVideo->title = $title;
 
@@ -657,10 +639,9 @@ class MicroVideoSpiderController extends BaseController
             $videoCount = new MvVideoCount();
             $videoCount->video_id = $mvVideo->id;
         }
-        $videoCount->dig = $dig;
-        $videoCount->like = 0;
-        $videoCount->bury = 0;
-        $videoCount->played = 0;
+        $videoCount->like = $dig;
+        $videoCount->bury = $bury;
+        $videoCount->played = $playCount;
         if (!$videoCount->save()) {
             $errors = array_merge($errors, $videoCount->getErrors());
             $this->error($errors);
@@ -668,6 +649,103 @@ class MicroVideoSpiderController extends BaseController
         }
 
         return $mvVideo;
+    }
+    
+    public function actionYiDian($page = 1, $cat = 0){
+
+        $task = $this->createTask();
+        if (!$task) {
+            print("任务创建失败");
+            exit(-1);
+        }
+        $errors = [];
+        try{
+            $host = 'http://124.243.203.100';
+            $cookie = 'JSESSIONID=rAkNO220FNIyfp5dNAWCLQ';
+            $header = array('Accept-Language: zh-cn', 'Connection: Keep-Alive', 'Cache-Control: no-cache', "Cookie:$cookie");
+            
+            $catMap = !empty($cat) ? [$cat=>isset(self::$yiDianCatArr[$cat]) ? self::$yiDianCatArr[$cat] : ''] : self::$yiDianCatArr;
+            $curl = new curl\Curl();
+            $curl->setOption(CURLOPT_HTTPHEADER, $header);
+            foreach($catMap as $cid => $cat){
+                $start = 0;
+                $end = 50;
+                for ($i = 0; $i < $page; $i++) {
+                    $suffix = "/Website/channel/news-list-for-channel?platform=1&infinite=true&cstart={$start}&group_fromid=g184&cend={$end}";
+                    $suffix .= "&appid=yidian&cv=3.6.8&distribution=zhushou.360.cn&refresh=1&channel_id={$cid}&fields=docid&fields=date&fields=image&fields=image_urls&fields=like&fields=source&fields=title&fields=url&fields=comment_count&fields=up&fields=down&version=020107&net=wifi";
+                    
+                    $url = $host . $suffix;
+                    $response = $curl->get($url);
+
+                    $result = Json::decode($response, true);
+                    if(empty($result['result'])){
+                        echo "$url error\n";
+                        continue;
+                    }
+                    $vIds = [];
+                    foreach ($result['result'] as $one) {
+                        if(!isset($one['video_url'])){
+                        	continue;
+                        }
+                        $commentNum = isset($one['comment_count']) ? $one['comment_count'] : 0;
+                        $digNum = isset($one['up']) ? $one['up'] : 0;
+                        $buryNum = $playNum = 0;
+                        $createTime = isset($one['date']) ? strtotime($one['date']) : time();
+                        $videoAr = $this->saveVideo(
+                            'yidian/' . $one['itemid'],
+                            $one['video_url'],
+                            "http://www.yidianzixun.com/article/" . $one['itemid'],//$one['url'],
+                            $one['title'],
+                            $one['summary'],
+                            $one['image'],
+                            'yidian',
+                            $one['duration'],
+                            0,//暂缺
+                            0,//暂缺
+                            '',
+                            $digNum,
+                            $buryNum,
+                            $playNum,
+                            $commentNum,
+                            $createTime,
+                            $errors
+                        );
+                        if (!$videoAr) {
+                            if (!empty($errors)) {
+                                $this->error($errors);
+                            }
+                            continue;
+                        }
+                        $utag = isset($one['wemedia_info']) && !empty($one['wemedia_info']['name']) ? ['u_' . $one['wemedia_info']['name']] : [];
+                        $vsct = isset($one['vsct_show']) ? $one['vsct_show'] : [];
+                        $keyword = isset($one['keywords']) ? $one['keywords'] : [];
+                        $tags = array_merge($utag, $vsct, $keyword);
+                        if(!empty($cat)){
+                            $tags[] = $cat;
+                        }
+
+                        $this->saveTag($tags, $videoAr->id, $errors);
+                        $vIds[] = $videoAr->id;
+                        echo "\tVideo " . $one['title']. " >>> Done.\n";
+                    }
+                    
+                    $this->finishThread($task->id, 'yidian', $url, "yidian/video/{$cid}", $vIds, $errors);
+                    echo "Page " . ($i + 1) . " >> Done.\n";
+                    
+                    $start += empty($start) ? 16 : 5;
+                    $end += empty($i) ? -4 : 5;
+                    
+                }
+            }
+        }
+        catch(\Exception $e){
+            $errors['Exception'] = $e->getMessage();
+            $this->error($errors);
+            $this->endTask($task->id, json_encode($errors));
+            exit(-1);
+        }
+        
+        $this->endTask($task->id, json_encode($errors));
     }
 
 }
