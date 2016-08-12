@@ -29,6 +29,24 @@ class UpdateController extends controller{
         echo "更新标签{$num}个，耗时" . round((microtime(true)-$sTime)*10)/10 . "秒\n";
     }
 
+    public function actionWallpaperCover(){
+    	$albums = Album::find()->where(['icon'=>['', 0]])->all();
+    	foreach($albums as $album){
+    		$rel = AlbumImgRel::find()->where(['album_id'=>$album->id])->orderBy('id asc')->one();
+    		if(!empty($rel)){
+    		    $img = WpImage::findOne($rel->wp_img_id);
+    			$album->setAttributes(['icon'=>$img->img_id]);
+    			if(!$album->save()){
+    				echo "图集" . $album->id . "保存封面图失败\n";
+    			}
+    		}
+    		else{
+    			echo "图集" . $album->id . "获取封面图失败\n";
+    		}
+    	}
+    }
+    
+
 	public function actionDeleteNoFileImg() {
 		$imgs = Image::find()->where('id%10 = 0')->all();
 		foreach ($imgs as $img) {
