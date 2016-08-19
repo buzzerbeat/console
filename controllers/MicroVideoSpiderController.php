@@ -600,7 +600,7 @@ class MicroVideoSpiderController extends BaseController
         return;
     }
 
-    private function saveVideo($key, $url, $siteUrl, $title, $desc, $coverUrl, $site, $length = 0, $vWidth = 0, $vHeight = 0, $m3u8 = '', $dig = 0, $bury = 0, $playCount = 0, $commentCount = 0, $createTime, &$errors) {
+    private function saveVideo($key, $url, $siteUrl, $title, $desc, $coverUrl, $site, $length = 0, $vWidth = 0, $vHeight = 0, $m3u8 = '', $like = 0, $bury = 0, $playCount = 0, $commentCount = 0, $createTime, &$errors) {
 
         if ($commentCount < 20) {
             //return false;
