@@ -218,7 +218,7 @@ class MicroVideoSpiderController extends BaseController
             exit(-1);
         }
         $errors = [];
-        $sourceNum = $filterNum = $duplicateNum = 0;
+        $totalNum = $totalFilter = $totalFail = $totalDuplicate = 0;
         $curl = new curl\Curl();
         try {
             foreach (self::$catArr as $oneCat => $val) {
@@ -242,6 +242,7 @@ class MicroVideoSpiderController extends BaseController
                     
                     $response = $curl->get($url);
                     $respJson = Json::decode($response, true);
+                    $sourceNum = $failNum = $filterNum = $duplicateNum = 0;
                     $vIds = [];
                     foreach ($respJson['data'] as $idx => $oneData) {
                         $sourceNum++;
@@ -278,7 +279,7 @@ class MicroVideoSpiderController extends BaseController
                                 	$duplicateNum++;
                                 	continue;
                                 }
-                                
+                                $duration = isset($oneJson["video_duration"]) ? $oneJson["video_duration"] : 0;
                                 $mvVideo = $this->saveVideo(
                                     $key,
                                     $realVideoUrl,
@@ -287,7 +288,7 @@ class MicroVideoSpiderController extends BaseController
                                     $oneJson["abstract"],
                                     $oneJson["large_image_list"][0]['url'],
                                     'toutiao',
-                                    $oneJson["video_duration"],
+                                    $duration,
                                     $oneJson["middle_image"]['width'],
                                     $oneJson["middle_image"]['height'],
                                     '',//m3u8
@@ -302,6 +303,7 @@ class MicroVideoSpiderController extends BaseController
                                     if (!empty($errors)) {
                                         $this->error($errors);
                                     }
+                                    $failNum++;
                                     continue;
                                 }
                                 
@@ -328,7 +330,12 @@ class MicroVideoSpiderController extends BaseController
                         }
                     }
                     echo "Page " . ($i + 1) . " > Done.\n";
-                    $this->finishThread($task->id, 'toutiao', $url, 'toutiao/video/' . $oneCat, $vIds, $errors);
+                    $this->finishThread($task->id, 'toutiao', $url, 'toutiao/video/' . $oneCat, $vIds, $errors, $sourceNum, count($vIds), $failNum, $duplicateNum, $filterNum);
+
+                    $totalNum += $sourceNum;
+                    $totalFilter += $filterNum;
+                    $totalFail += $failNum;
+                    $totalDuplicate += $duplicateNum;
                 }
                 echo "Cat " . $oneCat . " > Done.\n";
             }
@@ -339,7 +346,7 @@ class MicroVideoSpiderController extends BaseController
             exit(-1);
         }
         
-        echo "总视频：{$sourceNum}个,过滤{$filterNum}, 重复{$duplicateNum}\n";
+        echo "总视频：{$totalNum}个,过滤{$totalFilter}, 重复{$totalDuplicate}, 错误{$totalFail}\n";
 
         $this->endTask($task->id, json_encode($errors));
 
@@ -683,7 +690,7 @@ class MicroVideoSpiderController extends BaseController
             exit(-1);
         }
         $errors = [];
-        $sourceNum = $duplicateNum = $filterNum = 0;
+        $totalNum = $totalFilter = $totalFail = $totalDuplicate = 0;
         try{
             $host = 'http://124.243.203.100';
             $cookie = 'JSESSIONID=rAkNO220FNIyfp5dNAWCLQ';
@@ -707,6 +714,7 @@ class MicroVideoSpiderController extends BaseController
                         echo "$url error\n";
                         continue;
                     }
+                    $sourceNum = $failNum = $duplicateNum = $filterNum = 0;
                     $vIds = [];
                     foreach ($result['result'] as $one) {
                         $sourceNum++;
@@ -729,7 +737,17 @@ class MicroVideoSpiderController extends BaseController
                         	$duplicateNum++;
                         	continue;
                         }
-                        
+                        //获取内页的增加时间信息
+                        $detailUrl = "{$host}/Website/contents/content?platform=1&related_docs=true&docid=" . $one['docid'];
+                        $detailUrl .= "&recommend_video=false&appid=yidian&related_navigations=true&bottom_channels=true&cv=3.6.8&distribution=zhushou.360.cn&related_wemedia=true&version=020107&net=wifi";
+                        $detaliInfo = $curl->get($detailUrl);
+                        $detailJson = Json::decode($detaliInfo, true);
+                        if(isset($detailJson['documents'][0]['date'])){
+                            $createTime = strtotime($detailJson['documents'][0]['date']);
+                        }
+                        else{
+                            $createTime = isset($one['date']) ? strtotime($one['date']) : time();
+                        }
                         $videoAr = $this->saveVideo(
                             $key,
                             $one['video_url'],
@@ -753,6 +771,7 @@ class MicroVideoSpiderController extends BaseController
                             if (!empty($errors)) {
                                 $this->error($errors);
                             }
+                            $failNum++;
                             continue;
                         }
                         $utag = isset($one['wemedia_info']) && !empty($one['wemedia_info']['name']) ? ['u_' . $one['wemedia_info']['name']] : [];
@@ -768,8 +787,13 @@ class MicroVideoSpiderController extends BaseController
                         echo "\tVideo " . $one['title']. " >>> Done.\n";
                     }
                     
-                    $this->finishThread($task->id, 'yidian', $url, "yidian/video/{$cid}", $vIds, $errors);
+                    $this->finishThread($task->id, 'yidian', $url, "yidian/video/{$cid}", $vIds, $errors, $sourceNum, count($vIds), $failNum, $duplicateNum, $filterNum);
                     echo "Page " . ($i + 1) . " >> Done.\n";
+
+                    $totalNum += $sourceNum;
+                    $totalFilter += $filterNum;
+                    $totalFail += $failNum;
+                    $totalDuplicate += $duplicateNum;
                     
                     $start += empty($start) ? 16 : 5;
                     $end += empty($i) ? -4 : 5;
@@ -784,7 +808,7 @@ class MicroVideoSpiderController extends BaseController
             exit(-1);
         }
         
-        echo "总视频：{$sourceNum}个,过滤{$filterNum}, 重复{$duplicateNum}\n";
+        echo "总视频：{$totalNum}个,过滤{$totalFilter}, 重复{$totalDuplicate},错误{$totalFail}\n";
         
         $this->endTask($task->id, json_encode($errors));
     }
