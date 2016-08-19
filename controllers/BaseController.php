@@ -39,7 +39,7 @@ class BaseController extends \yii\console\Controller
         return $crawlTask;
     }
 
-    protected function finishThread($taskId, $site, $url, $key, $entityIds, $errorJson = "") {
+    protected function finishThread($taskId, $site, $url, $key, $entityIds, $errorJson = "", $total = 0, $success = 0, $fail = 0, $duplicate = 0, $filter = 0) {
         $crawlThread = new CrawlThread();
         $crawlThread->status = empty($errorJson) ? CrawlThread::STATUS_SUCCESS : CrawlThread::STATUS_FAIL;
         $crawlThread->error_json = json_encode($errorJson);
@@ -47,6 +47,11 @@ class BaseController extends \yii\console\Controller
         $crawlThread->site = $site;
         $crawlThread->task_id = $taskId;
         $crawlThread->key = $key;
+        $crawlThread->total_num = $total;
+        $crawlThread->success_num = $success;
+        $crawlThread->fail_num = $fail;
+        $crawlThread->duplicate_num = $duplicate;
+        $crawlThread->filter_num = $filter;
         $crawlThread->entity_id = json_encode($entityIds);
         if ($this->elapsedTime > 0) {
             $crawlThread->duration = intval(Yii::getLogger()->elapsedTime) - $this->elapsedTime;
