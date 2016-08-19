@@ -248,6 +248,7 @@ class MicroVideoSpiderController extends BaseController
                         if (!isset($oneJson["video_id"])) {
                             continue;
                         }
+						echo $oneJson["video_id"] . " start\n";
                         $videoApiUrl = "http://i.snssdk.com/video/urls/1/toutiao/mp4/" . $oneJson["video_id"] . "?callback=tt__video__9vp4me";
                         $videoResp = $curl->get($videoApiUrl);
                         if (preg_match('/\(([^)]*)\)/', $videoResp, $matches)) {
@@ -261,6 +262,7 @@ class MicroVideoSpiderController extends BaseController
                                         $realVideoUrl = $vUrl;
                                     }
                                 }
+								echo "  " . $oneJson["large_image_list"][0]['url'] . "\n";
                                 $createTime = $oneJson['publish_time'];
                                 //尝试保存视频
                                 $playNum = isset($oneJson['video_detail_info']) ? $oneJson['video_detail_info']['video_watch_count'] : 0;
@@ -501,6 +503,13 @@ class MicroVideoSpiderController extends BaseController
 
     private function saveTag($keywords, $videoId, &$errors)
     {
+        $keywordExist = MvVideoKeywordRel::findOne([
+            'video_id' => $videoId,
+        ]);
+        if (!empty($keywordExist)) {
+            return;
+        }
+
         foreach($keywords as $keyword) {
             //首先判断是否符合要求
             //只能是汉字，字母，数字或_-
@@ -579,7 +588,7 @@ class MicroVideoSpiderController extends BaseController
     private function saveVideo($key, $url, $siteUrl, $title, $desc, $coverUrl, $site, $length = 0, $vWidth = 0, $vHeight = 0, $m3u8 = '', $dig = 0, $bury = 0, $playCount = 0, $commentCount = 0, $createTime, &$errors) {
 
         if ($commentCount < 20) {
-            return false;
+            //return false;
         }
         if (empty($url) || empty($siteUrl)) {
             return false;
@@ -687,6 +696,7 @@ class MicroVideoSpiderController extends BaseController
                         if(!isset($one['video_url'])){
                         	continue;
                         }
+                        echo "\tVideo " . $one['title']. " >>> Start.\n";
                         $commentNum = isset($one['comment_count']) ? $one['comment_count'] : 0;
                         $digNum = isset($one['up']) ? $one['up'] : 0;
                         $buryNum = $playNum = 0;
