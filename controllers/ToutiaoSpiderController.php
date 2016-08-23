@@ -115,7 +115,7 @@ class ToutiaoSpiderController extends BaseController
                         if ($content['has_video']) {
                             //video
                             $ttArticle->type = TtArticle::TYPE_VIDEO;
-                            if (isset($content['video_id'])) {
+                            if (isset($content['video_detail_info']) && isset($content['video_detail_info']["video_id"])) {
                                 $videoApiUrl = "http://i.snssdk.com/video/urls/1/toutiao/mp4/" . $content["video_id"] . "?callback=tt__video__9vp4me";
                                 echo $videoApiUrl . "\n";
                                 $curl->setOption(CURLOPT_HTTPHEADER, [
@@ -164,6 +164,9 @@ class ToutiaoSpiderController extends BaseController
 
                                     }
                                 }
+                            } else {
+                                $fail ++;
+                                continue;
                             }
 //
                         } else {
@@ -580,6 +583,22 @@ class ToutiaoSpiderController extends BaseController
             return "http://p3.pstatp.com/large/" . $uriArr[1];
         }
         return false;
+    }
+
+    public function actionTestOutput($test = "") {
+        $resp = file_get_contents('/tmp/news_data_20160823184955');
+        $newsList = json_decode($resp, true);
+        foreach ($newsList['data'] as $idx => $news) {
+            $content = json_decode($news['content'], true);
+            if (empty($content['item_id'])) {
+                continue;
+            }
+            if (!empty($test) && $test == $content['item_id']) {
+                var_dump($content);
+            }
+
+        }
+
     }
 
 
