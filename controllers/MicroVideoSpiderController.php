@@ -270,7 +270,7 @@ class MicroVideoSpiderController extends BaseController
                                 $playNum = isset($oneJson['video_detail_info']['video_watch_count']) ? $oneJson['video_detail_info']['video_watch_count'] : 0;
                                 $key = 'toutiao/' . $oneJson["video_id"];
                                 
-                                if($playNum <= 1000){
+                                if($playNum <= 10000){
                                 	$filterNum++;
                                 	continue;
                                 }
@@ -289,8 +289,8 @@ class MicroVideoSpiderController extends BaseController
                                     $oneJson["large_image_list"][0]['url'],
                                     'toutiao',
                                     $duration,
-                                    $oneJson["middle_image"]['width'],
-                                    $oneJson["middle_image"]['height'],
+                                    0,
+                                    0,
                                     '',//m3u8
                                     $oneJson['digg_count'],
                                     $oneJson['bury_count'],
