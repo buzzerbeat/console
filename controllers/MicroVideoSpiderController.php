@@ -250,7 +250,8 @@ class MicroVideoSpiderController extends BaseController
                         if (!isset($oneJson["video_id"])) {
                             continue;
                         }
-						echo $oneJson["video_id"] . " start\n";
+                        $lastHotTime = $oneJson['behot_time'];
+						echo "\t" . $oneJson["video_id"] . " start\n";
                         $videoApiUrl = "http://i.snssdk.com/video/urls/1/toutiao/mp4/" . $oneJson["video_id"] . "?callback=tt__video__9vp4me";
                         $videoResp = $curl->get($videoApiUrl);
                         if (preg_match('/\(([^)]*)\)/', $videoResp, $matches)) {
@@ -264,7 +265,7 @@ class MicroVideoSpiderController extends BaseController
                                         $realVideoUrl = $vUrl;
                                     }
                                 }
-								echo "  " . $oneJson["large_image_list"][0]['url'] . "\n";
+								echo "\t\t" . $oneJson["large_image_list"][0]['url'] . "\n";
                                 $createTime = $oneJson['publish_time'];
                                 //尝试保存视频
                                 $playNum = isset($oneJson['video_detail_info']['video_watch_count']) ? $oneJson['video_detail_info']['video_watch_count'] : 0;
@@ -324,9 +325,6 @@ class MicroVideoSpiderController extends BaseController
                             $vIds[] = $mvVideo->id;
 
                             echo $oneJson["title"] . " >>> Done\n";
-                            if ($idx == count($respJson["data"]) - 1) {
-                                $lastHotTime = $oneJson['behot_time'];
-                            }
                         }
                     }
                     echo "Page " . ($i + 1) . " > Done.\n";
