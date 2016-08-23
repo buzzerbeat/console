@@ -4,9 +4,13 @@ namespace console\controllers;
 use yii;
 use yii\helpers\Console;
 use wallpaper\models\WpImage;
+
 use microvideo\models\MvTag;
 use microvideo\models\MvVideoTagRel;
 use microvideo\models\MvVideo;
+use microvideo\models\VideoForm;
+use microvideo\models\MvVideoForm;
+use microvideo\models\MvVideoCount;
 
 class TimerController extends \yii\console\Controller
 {   

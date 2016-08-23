@@ -7,6 +7,11 @@ use yii\console\Controller;
 use backend\models\microvideo\MvTag;
 use backend\models\microvideo\MvVideoTagRel;
 use common\models\Image;
+use common\models\OauthClients;
+use common\models\User;
+use wallpaper\models\Album;;
+use wallpaper\models\AlbumImgRel;
+use wallpaper\models\WpImage;
 
 class UpdateController extends controller{
     /*
@@ -46,6 +51,31 @@ class UpdateController extends controller{
     	}
     }
     
+	public function actionNewUser($mobile, $passwd, $name) {
+
+        $newUser = new User();
+        $newUser->setAttributes([
+                'mobile'=>$mobile,
+                'username'=>$name,
+                'created_at'=>time(),
+                'updated_at'=>time() - 86400 * 90,
+                'type'=>User::MOBILE_TYPE,
+                'client_id'=> 'test',
+        ], false);
+
+
+        $newUser->status = User::STATUS_ACTIVE;
+        $newUser->setPassword($passwd);
+        $newUser->generateAuthKey();
+        $newUser->generatePasswordResetToken();
+        if (!$newUser->save()) {
+            print_r($newUser->getErrors());
+        }
+        if (!$newUser->generateToken('test')) {
+            print_r($newUser->getErrors());
+        }
+
+    }
 
 	public function actionDeleteNoFileImg() {
 		$imgs = Image::find()->where('id%10 = 0')->all();

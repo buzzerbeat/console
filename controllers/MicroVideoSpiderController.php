@@ -218,6 +218,7 @@ class MicroVideoSpiderController extends BaseController
             exit(-1);
         }
         $errors = [];
+        $totalNum = $totalFilter = $totalFail = $totalDuplicate = 0;
         $curl = new curl\Curl();
         try {
             foreach (self::$catArr as $oneCat => $val) {
@@ -241,13 +242,15 @@ class MicroVideoSpiderController extends BaseController
                     
                     $response = $curl->get($url);
                     $respJson = Json::decode($response, true);
+                    $sourceNum = $failNum = $filterNum = $duplicateNum = 0;
                     $vIds = [];
                     foreach ($respJson['data'] as $idx => $oneData) {
-
+                        $sourceNum++;
                         $oneJson = json_decode($oneData['content'], true);
                         if (!isset($oneJson["video_id"])) {
                             continue;
                         }
+						echo $oneJson["video_id"] . " start\n";
                         $videoApiUrl = "http://i.snssdk.com/video/urls/1/toutiao/mp4/" . $oneJson["video_id"] . "?callback=tt__video__9vp4me";
                         $videoResp = $curl->get($videoApiUrl);
                         if (preg_match('/\(([^)]*)\)/', $videoResp, $matches)) {
@@ -261,20 +264,33 @@ class MicroVideoSpiderController extends BaseController
                                         $realVideoUrl = $vUrl;
                                     }
                                 }
+								echo "  " . $oneJson["large_image_list"][0]['url'] . "\n";
                                 $createTime = $oneJson['publish_time'];
                                 //尝试保存视频
-                                $playNum = isset($oneJson['video_detail_info']) ? $oneJson['video_detail_info']['video_watch_count'] : 0;
+                                $playNum = isset($oneJson['video_detail_info']['video_watch_count']) ? $oneJson['video_detail_info']['video_watch_count'] : 0;
+                                $key = 'toutiao/' . $oneJson["video_id"];
+                                
+                                if($playNum <= 10000){
+                                	$filterNum++;
+                                	continue;
+                                }
+                                $video = Video::findOne(['key' => $key]);
+                                if(!empty($video)){
+                                	$duplicateNum++;
+                                	continue;
+                                }
+                                $duration = isset($oneJson["video_duration"]) ? $oneJson["video_duration"] : 0;
                                 $mvVideo = $this->saveVideo(
-                                    'toutiao/' . $oneJson["video_id"],
+                                    $key,
                                     $realVideoUrl,
                                     $oneJson["display_url"],
                                     $oneJson["title"],
                                     $oneJson["abstract"],
                                     $oneJson["large_image_list"][0]['url'],
                                     'toutiao',
-                                    $oneJson["video_duration"],
-                                    $oneJson["middle_image"]['width'],
-                                    $oneJson["middle_image"]['height'],
+                                    $duration,
+                                    0,
+                                    0,
                                     '',//m3u8
                                     $oneJson['digg_count'],
                                     $oneJson['bury_count'],
@@ -287,6 +303,7 @@ class MicroVideoSpiderController extends BaseController
                                     if (!empty($errors)) {
                                         $this->error($errors);
                                     }
+                                    $failNum++;
                                     continue;
                                 }
                                 
@@ -313,7 +330,12 @@ class MicroVideoSpiderController extends BaseController
                         }
                     }
                     echo "Page " . ($i + 1) . " > Done.\n";
-                    $this->finishThread($task->id, 'toutiao', $url, 'toutiao/video/' . $oneCat, $vIds, $errors);
+                    $this->finishThread($task->id, 'toutiao', $url, 'toutiao/video/' . $oneCat, $vIds, $errors, $sourceNum, count($vIds), $failNum, $duplicateNum, $filterNum);
+
+                    $totalNum += $sourceNum;
+                    $totalFilter += $filterNum;
+                    $totalFail += $failNum;
+                    $totalDuplicate += $duplicateNum;
                 }
                 echo "Cat " . $oneCat . " > Done.\n";
             }
@@ -323,6 +345,8 @@ class MicroVideoSpiderController extends BaseController
             $this->endTask($task->id, json_encode($errors));
             exit(-1);
         }
+        
+        echo "总视频：{$totalNum}个,过滤{$totalFilter}, 重复{$totalDuplicate}, 错误{$totalFail}\n";
 
         $this->endTask($task->id, json_encode($errors));
 
@@ -501,6 +525,13 @@ class MicroVideoSpiderController extends BaseController
 
     private function saveTag($keywords, $videoId, &$errors)
     {
+        $keywordExist = MvVideoKeywordRel::findOne([
+            'video_id' => $videoId,
+        ]);
+        if (!empty($keywordExist)) {
+            return;
+        }
+
         foreach($keywords as $keyword) {
             //首先判断是否符合要求
             //只能是汉字，字母，数字或_-
@@ -576,10 +607,10 @@ class MicroVideoSpiderController extends BaseController
         return;
     }
 
-    private function saveVideo($key, $url, $siteUrl, $title, $desc, $coverUrl, $site, $length = 0, $vWidth = 0, $vHeight = 0, $m3u8 = '', $dig = 0, $bury = 0, $playCount = 0, $commentCount = 0, $createTime, &$errors) {
+    private function saveVideo($key, $url, $siteUrl, $title, $desc, $coverUrl, $site, $length = 0, $vWidth = 0, $vHeight = 0, $m3u8 = '', $like = 0, $bury = 0, $playCount = 0, $commentCount = 0, $createTime, &$errors) {
 
         if ($commentCount < 20) {
-            return false;
+            //return false;
         }
         if (empty($url) || empty($siteUrl)) {
             return false;
@@ -597,7 +628,7 @@ class MicroVideoSpiderController extends BaseController
             $video->site_url = $siteUrl;
             $video->desc = $desc;
             $video->length = $length;
-            $video->add_time = time();
+            $video->add_time = !empty($createTime) ? $createTime : time();
             $video->pub_time = time();
             $siteRegexSetting = SiteRegexSetting::findOne(['site' => $site]);
             $video->regex_setting = !empty($siteRegexSetting) ? $siteRegexSetting->id : 0;
@@ -639,7 +670,7 @@ class MicroVideoSpiderController extends BaseController
             $videoCount = new MvVideoCount();
             $videoCount->video_id = $mvVideo->id;
         }
-        $videoCount->like = $dig;
+        $videoCount->like = $like;
         $videoCount->bury = $bury;
         $videoCount->played = $playCount;
         if (!$videoCount->save()) {
@@ -659,6 +690,7 @@ class MicroVideoSpiderController extends BaseController
             exit(-1);
         }
         $errors = [];
+        $totalNum = $totalFilter = $totalFail = $totalDuplicate = 0;
         try{
             $host = 'http://124.243.203.100';
             $cookie = 'JSESSIONID=rAkNO220FNIyfp5dNAWCLQ';
@@ -682,17 +714,42 @@ class MicroVideoSpiderController extends BaseController
                         echo "$url error\n";
                         continue;
                     }
+                    $sourceNum = $failNum = $duplicateNum = $filterNum = 0;
                     $vIds = [];
                     foreach ($result['result'] as $one) {
+                        $sourceNum++;
                         if(!isset($one['video_url'])){
                         	continue;
                         }
+                        echo "\tVideo " . $one['title']. " >>> Start.\n";
                         $commentNum = isset($one['comment_count']) ? $one['comment_count'] : 0;
-                        $digNum = isset($one['up']) ? $one['up'] : 0;
-                        $buryNum = $playNum = 0;
+                        $likeNum = isset($one['like']) ? $one['like'] : (isset($one['up']) ? $one['up'] : 0);
+                        $buryNum = isset($one['down']) ? $one['down'] : 0;
+                        $playNum = rand(200, 800) * (intval($likeNum) + intval($buryNum));
                         $createTime = isset($one['date']) ? strtotime($one['date']) : time();
+                        $key = 'yidian/' . $one['itemid'];
+                        if($likeNum <= 50){
+                            $filterNum++;
+                        	continue;
+                        }
+                        $video = Video::findOne(['key' => $key]);
+                        if(!empty($video)){
+                        	$duplicateNum++;
+                        	continue;
+                        }
+                        //获取内页的增加时间信息
+                        $detailUrl = "{$host}/Website/contents/content?platform=1&related_docs=true&docid=" . $one['docid'];
+                        $detailUrl .= "&recommend_video=false&appid=yidian&related_navigations=true&bottom_channels=true&cv=3.6.8&distribution=zhushou.360.cn&related_wemedia=true&version=020107&net=wifi";
+                        $detaliInfo = $curl->get($detailUrl);
+                        $detailJson = Json::decode($detaliInfo, true);
+                        if(isset($detailJson['documents'][0]['date'])){
+                            $createTime = strtotime($detailJson['documents'][0]['date']);
+                        }
+                        else{
+                            $createTime = isset($one['date']) ? strtotime($one['date']) : time();
+                        }
                         $videoAr = $this->saveVideo(
-                            'yidian/' . $one['itemid'],
+                            $key,
                             $one['video_url'],
                             "http://www.yidianzixun.com/article/" . $one['itemid'],//$one['url'],
                             $one['title'],
@@ -703,7 +760,7 @@ class MicroVideoSpiderController extends BaseController
                             0,//暂缺
                             0,//暂缺
                             '',
-                            $digNum,
+                            $likeNum,
                             $buryNum,
                             $playNum,
                             $commentNum,
@@ -714,6 +771,7 @@ class MicroVideoSpiderController extends BaseController
                             if (!empty($errors)) {
                                 $this->error($errors);
                             }
+                            $failNum++;
                             continue;
                         }
                         $utag = isset($one['wemedia_info']) && !empty($one['wemedia_info']['name']) ? ['u_' . $one['wemedia_info']['name']] : [];
@@ -729,8 +787,13 @@ class MicroVideoSpiderController extends BaseController
                         echo "\tVideo " . $one['title']. " >>> Done.\n";
                     }
                     
-                    $this->finishThread($task->id, 'yidian', $url, "yidian/video/{$cid}", $vIds, $errors);
+                    $this->finishThread($task->id, 'yidian', $url, "yidian/video/{$cid}", $vIds, $errors, $sourceNum, count($vIds), $failNum, $duplicateNum, $filterNum);
                     echo "Page " . ($i + 1) . " >> Done.\n";
+
+                    $totalNum += $sourceNum;
+                    $totalFilter += $filterNum;
+                    $totalFail += $failNum;
+                    $totalDuplicate += $duplicateNum;
                     
                     $start += empty($start) ? 16 : 5;
                     $end += empty($i) ? -4 : 5;
@@ -744,6 +807,8 @@ class MicroVideoSpiderController extends BaseController
             $this->endTask($task->id, json_encode($errors));
             exit(-1);
         }
+        
+        echo "总视频：{$totalNum}个,过滤{$totalFilter}, 重复{$totalDuplicate},错误{$totalFail}\n";
         
         $this->endTask($task->id, json_encode($errors));
     }
