@@ -43,7 +43,7 @@ class ToutiaoSpiderController extends BaseController
         $errors = [];
         try {
             $prefix = 'news_';
-            $cats = ['society', 'tech', 'entertainment', 'car', 'sports', 'finance', 'game'];
+            $cats = ['society', 'tech', 'entertainment', 'car', 'sports', 'finance', 'game', 'military', 'world' ,'story'];
             foreach ($cats as $cat) {
                 $url = "https://lf.snssdk.com/api/news/feed/v40/?category=" . $prefix . $cat . "&concern_id=6215497899397089794&refer=1&count=20&min_behot_time=1470797978&last_refresh_sub_entrance_interval=1470988580&bd_city=%E5%8C%97%E4%BA%AC%E5%B8%82&bd_latitude=40.030587&bd_longitude=116.346081&bd_loc_time=1470988504&loc_mode=7&loc_time=1470988487&latitude=40.02768&longitude=116.340181&city=%E6%B5%B7%E6%B7%80%E5%8C%BA&lac=41035&cid=6011997&cp=5674a6d88c124q1&iid=5086033848&device_id=3088901026&ac=wifi&channel=growth_wap&aid=13&app_name=news_article&version_code=573&version_name=5.7.3&device_platform=android&ab_version=concern_talk_data_test10_09%2Cgroup_favor_optional_login_v572%2Ctab_config1_573_old_android_user_change2&ab_client=a1%2Cc1%2Ce1%2Cf2%2Cg2%2Cf7&ab_feature=z1&abflag=7&ssmix=a&device_type=Nexus+5&device_brand=google&language=zh&os_api=23&os_version=6.0.1&uuid=352136067342168&openudid=f9de7d976f67b82f&manifest_version_code=573&resolution=1080*1776&dpi=480&update_version_code=5734&_rticket=1470988580312";
 
@@ -55,7 +55,10 @@ class ToutiaoSpiderController extends BaseController
                     "Cookie:uuid=\"w:af1c80b1201640079ec769757cd9b5e7\"; tt_webid=20220733492",
                     "Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
                 ]);
-                $newsList = json_decode($curl->get($url), true);
+                 $newsResp = $curl->get($url);
+                file_put_contents("/tmp/news_data_". date('YmdHis'), $newsResp);
+
+                $newsList = json_decode($newsResp, true);
                 $artIds = [];
                 $filter = 0;
                 $duplicate = 0;
@@ -116,7 +119,7 @@ class ToutiaoSpiderController extends BaseController
                             //video
                             $ttArticle->type = TtArticle::TYPE_VIDEO;
                             if (isset($content['video_detail_info']) && isset($content['video_detail_info']["video_id"])) {
-                                $videoApiUrl = "http://i.snssdk.com/video/urls/1/toutiao/mp4/" . $content["video_id"] . "?callback=tt__video__9vp4me";
+                                $videoApiUrl = "http://i.snssdk.com/video/urls/1/toutiao/mp4/" . $content['video_detail_info']["video_id"] . "?callback=tt__video__9vp4me";
                                 echo $videoApiUrl . "\n";
                                 $curl->setOption(CURLOPT_HTTPHEADER, [
                                     "User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/52.0.2743.116 Safari/537.36",
@@ -139,11 +142,12 @@ class ToutiaoSpiderController extends BaseController
                                                 $realVideoUrl = $vUrl;
                                             }
                                         }
+                                        echo $realVideoUrl . " Save Video\n";
                                         $createTime = $content['publish_time'];
                                         //尝试保存视频
                                         $playNum = isset($content['video_detail_info']) ? $content['video_detail_info']['video_watch_count'] : 0;
                                         $ttVideo = $this->saveVideo(
-                                            'toutiao/' . $content["video_id"],
+                                            'toutiao/' . $content['video_detail_info']["video_id"],
                                             $realVideoUrl,
                                             $content["display_url"],
                                             $content["title"],
@@ -519,9 +523,6 @@ class ToutiaoSpiderController extends BaseController
     private function saveVideo($key, $url, $siteUrl, $title, $desc, $coverUrl, $site, $length = 0, $vWidth = 0, $vHeight = 0, $m3u8 = '', $dig = 0, $bury = 0, $playCount = 0, $commentCount = 0, $createTime, &$errors)
     {
 
-        if ($commentCount < 20) {
-            return false;
-        }
         if (empty($url) || empty($siteUrl)) {
             return false;
         }
@@ -586,7 +587,7 @@ class ToutiaoSpiderController extends BaseController
     }
 
     public function actionTestOutput($test = "") {
-        $resp = file_get_contents('/tmp/news_data_20160823184955');
+        $resp = file_get_contents('/tmp/news_data_20160824094021');
         $newsList = json_decode($resp, true);
         foreach ($newsList['data'] as $idx => $news) {
             $content = json_decode($news['content'], true);
@@ -596,6 +597,7 @@ class ToutiaoSpiderController extends BaseController
             if (!empty($test) && $test == $content['item_id']) {
                 var_dump($content);
             }
+
 
         }
 
