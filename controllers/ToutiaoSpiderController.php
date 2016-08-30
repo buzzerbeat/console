@@ -43,8 +43,19 @@ class ToutiaoSpiderController extends BaseController
         $errors = [];
         try {
             $prefix = 'news_';
-            $cats = ['society', 'tech', 'entertainment', 'car', 'sports', 'finance', 'game', 'military', 'world' ,'story'];
-            foreach ($cats as $cat) {
+            $cats = [
+                'society' => '社会',
+                'tech' => '科技',
+                'entertainment' => '娱乐',
+                'car' => '汽车',
+                'sports' => '体育',
+                'finance' => '经济',
+                'game' => '游戏',
+                'military' => '军事',
+                'world' => '国际',
+                'story' => '故事',
+            ];
+            foreach ($cats as $cat => $desc) {
                 $url = "https://lf.snssdk.com/api/news/feed/v40/?category=" . $prefix . $cat . "&concern_id=6215497899397089794&refer=1&count=20&min_behot_time=1470797978&last_refresh_sub_entrance_interval=1470988580&bd_city=%E5%8C%97%E4%BA%AC%E5%B8%82&bd_latitude=40.030587&bd_longitude=116.346081&bd_loc_time=1470988504&loc_mode=7&loc_time=1470988487&latitude=40.02768&longitude=116.340181&city=%E6%B5%B7%E6%B7%80%E5%8C%BA&lac=41035&cid=6011997&cp=5674a6d88c124q1&iid=5086033848&device_id=3088901026&ac=wifi&channel=growth_wap&aid=13&app_name=news_article&version_code=573&version_name=5.7.3&device_platform=android&ab_version=concern_talk_data_test10_09%2Cgroup_favor_optional_login_v572%2Ctab_config1_573_old_android_user_change2&ab_client=a1%2Cc1%2Ce1%2Cf2%2Cg2%2Cf7&ab_feature=z1&abflag=7&ssmix=a&device_type=Nexus+5&device_brand=google&language=zh&os_api=23&os_version=6.0.1&uuid=352136067342168&openudid=f9de7d976f67b82f&manifest_version_code=573&resolution=1080*1776&dpi=480&update_version_code=5734&_rticket=1470988580312";
 
                 $curl = new Curl();
@@ -145,7 +156,7 @@ class ToutiaoSpiderController extends BaseController
                                         echo $realVideoUrl . " Save Video\n";
                                         $createTime = $content['publish_time'];
                                         //尝试保存视频
-                                        $playNum = isset($content['video_detail_info']) ? $content['video_detail_info']['video_watch_count'] : 0;
+                                        $playNum = isset($content['video_detail_info']['video_watch_count']) ? $content['video_detail_info']['video_watch_count'] : 0;
                                         $ttVideo = $this->saveVideo(
                                             'toutiao/' . $content['video_detail_info']["video_id"],
                                             $realVideoUrl,
@@ -213,7 +224,6 @@ class ToutiaoSpiderController extends BaseController
                         } else {
                             $style = TtArticle::STYLE_NO_THUMB;
                         }
-
                         $coverIds = [];
                         foreach ($coverList as $idx => $coverItem) {
                             $ttCover = TtArticleImage::findOne([
@@ -226,7 +236,6 @@ class ToutiaoSpiderController extends BaseController
                                 if (strstr($coverUrl, 'webp')) {
                                     $coverUrl = $this->convertWebpUrlToJpeg($coverItem['uri']);
                                 }
-
                                 $gImageForm = new ImageForm();
                                 $gImageForm->url = $coverUrl;
                                 $gImage = $gImageForm->ttSave();
@@ -238,7 +247,7 @@ class ToutiaoSpiderController extends BaseController
                                         $ttCover->image_id = $gImage->id;
                                         $ttCover->tt_article_id = $ttArticle->article_id;
                                         $ttCover->index = $idx;
-                                        $ttCover->tt_uri = str_replace('list', 'large', $coverItem['uri']);
+                                        $ttCover->tt_uri = $coverItem['uri'];
                                         $ttCover->mode = TtArticleImage::MODE_DEFAULT;
                                         $ttCover->is_thumb = 1;
                                         if (!$ttCover->save()) {
@@ -271,35 +280,36 @@ class ToutiaoSpiderController extends BaseController
                         }
 
                         $ttArticle->style = $style;
-
+                        $keywords = [$desc];
                         if (isset($content['keywords']) && !empty($content['keywords'])) {
-                            $keywords = explode(',', $content['keywords']);
-                            foreach ($keywords as $keyword) {
-                                $ttTag = TtArticleTag::findOne(['name' => $keyword]);
-                                if (empty($ttTag)) {
-                                    $ttTag = new TtArticleTag();
-                                    $ttTag->name = $keyword;
-                                    if (!$ttTag->save()) {
-                                        $errors = array_merge($errors, $ttTag->getErrors());
-                                        $fail ++;
-                                        continue;
-                                    }
+                            $keywords = array_merge($keywords, explode(',', $content['keywords']));
 
+                        }
+                        foreach ($keywords as $keyword) {
+                            $ttTag = TtArticleTag::findOne(['name' => $keyword]);
+                            if (empty($ttTag)) {
+                                $ttTag = new TtArticleTag();
+                                $ttTag->name = $keyword;
+                                if (!$ttTag->save()) {
+                                    $errors = array_merge($errors, $ttTag->getErrors());
+                                    $fail ++;
+                                    continue;
                                 }
-                                $ttTagRel = TtArticleTagRel::findOne([
-                                    'tag_id' => $ttTag->id,
-                                    'article_id' => $article->id,
-                                ]);
-                                if (empty($ttTagRel)) {
-                                    $ttTagRel = new TtArticleTagRel();
-                                    $ttTagRel->article_id = $article->id;
-                                    $ttTagRel->tag_id = $ttTag->id;
-                                    if (!$ttTagRel->save()) {
-                                        $errors = array_merge($errors, $ttTagRel->getErrors());
-                                        $fail ++;
-                                        continue;
 
-                                    }
+                            }
+                            $ttTagRel = TtArticleTagRel::findOne([
+                                'tag_id' => $ttTag->id,
+                                'article_id' => $article->id,
+                            ]);
+                            if (empty($ttTagRel)) {
+                                $ttTagRel = new TtArticleTagRel();
+                                $ttTagRel->article_id = $article->id;
+                                $ttTagRel->tag_id = $ttTag->id;
+                                if (!$ttTagRel->save()) {
+                                    $errors = array_merge($errors, $ttTagRel->getErrors());
+                                    $fail ++;
+                                    continue;
+
                                 }
                             }
                         }
@@ -347,7 +357,7 @@ class ToutiaoSpiderController extends BaseController
                     $newsDetailData = $newsDetailArr['data'];
                     if (!empty($article)) {
 
-                        $article->content = $newsDetailData['content'];
+                        $article->content = $this->processExtraTag($newsDetailData['content']);
                         if (!$article->save()) {
                             $errors = array_merge($errors, $article->getErrors());
                             $fail ++;
@@ -393,7 +403,6 @@ class ToutiaoSpiderController extends BaseController
                                 continue;
                             }
                         }
-
                         if ($ttArticle->type == TtArticle::TYPE_ARTICLE) {
                             if (isset($newsDetailData['image_detail'])) {
                                 foreach ($newsDetailData['image_detail'] as $idx => $imgDetail) {
@@ -433,6 +442,7 @@ class ToutiaoSpiderController extends BaseController
                                         'tt_article_id' => $ttArticle->article_id,
                                         'tt_uri' => $gallery['sub_image']['uri'],
                                     ]);
+
                                     if (empty($ttImage)) {
                                         $gImageForm = new ImageForm();
                                         $gImageForm->url = $gallery['sub_image']['url'];
@@ -601,6 +611,20 @@ class ToutiaoSpiderController extends BaseController
 
         }
 
+    }
+
+    private function processExtraTag($content)
+    {
+
+        if (preg_match('/<article>([\s\S]*)<\/article>/', $content, $matches)) {
+//            var_dump($matches[1]);
+//            exit;
+//            <p class="footnote">本文为头条号作者原创。未经授权，不得转载。</p>
+            $replacedCont = preg_replace('/<p class="footnote">[\s\S]*<\/p>/', '', $matches[1]);
+//            var_dump($replacedCont);
+            return $replacedCont;
+        }
+        return $content;
     }
 
 
