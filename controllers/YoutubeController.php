@@ -33,7 +33,7 @@ class YoutubeController extends BaseController
 //            exit;
             foreach($videoList['items'] as $video) {
                 $cat = $videoList['cat'];
-                $videoAr = $this->saveVideo("youtube/". $video['videoId'], $video['url'], $video['url'], $video['title'], $video['description']
+                $videoAr = $this->saveVideo("youtube/". $video['videoId'], 'http://207.226.142.113/youtube_' . $video['videoId'] . '.mp4', $video['url'], $video['title'], $video['description']
                     , $video['thumbnail'], "youtube");
                 if (!$videoAr) {
                     continue;
@@ -173,7 +173,7 @@ class YoutubeController extends BaseController
         if (!$mvVideo) {
             $mvVideo = new MvVideo();
             $mvVideo->video_id = $video->id;
-            $mvVideo->status = MvVideo::STATUS_ACTIVE;
+            $mvVideo->status = MvVideo::STATUS_DELETE;
             $mvVideo->create_time = !empty($createTime) ? $createTime : time();
             $mvVideo->update_time = time();
             $mvVideo->desc = $desc;
