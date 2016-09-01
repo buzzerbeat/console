@@ -22,9 +22,56 @@ use microvideo\models\MvVideoKeywordRel;
 
 class YoutubeController extends BaseController
 {
+
+    public function actionCheck()
+    {
+        $videos = MvVideo::find()->where(['like', 'key', 'youtube'])->all();
+        foreach ($videos as $video) {
+            $oVideo = Video::findOne($video->video_id);
+            $handle = curl_init($oVideo->url);
+            curl_setopt($handle, CURLOPT_RETURNTRANSFER, TRUE);
+
+            curl_setopt($handle, CURLOPT_HEADER, true); // header will be at output
+            curl_setopt($handle, CURLOPT_NOBODY, true);
+            curl_exec ($handle);
+            /* Check for 404 (file not found). */
+            $httpCode = curl_getinfo($handle, CURLINFO_HTTP_CODE);
+            if ($httpCode == 404) {
+                MvVideoKeywordRel::deleteAll(['video_id'=>$video->id]);
+                MvVideoTagRel::deleteAll(['mv_video_id'=>$video->id]);
+                MvVideoCount::deleteAll(['video_id'=>$video->id]);
+                $video->delete();
+                echo $video->id .  " deleted.\n";
+                $oVideo->delete();
+            }
+
+            curl_close($handle);
+//            exit;
+
+        }
+    }
+    public function actionDuration() {
+        $videos = MvVideo::find()->where(['like', 'key', 'youtube'])->all();
+        foreach ($videos as $video) {
+            $keyArr = explode('/', $video->key);
+            $oVideo = Video::findOne($video->video_id);
+            if (empty($oVideo->length)) {
+                $curl = new Curl();
+                $duration = $curl->get('http://207.226.142.113/duration.php?vid='. $keyArr[1]);
+                var_dump($duration);
+                if (is_numeric(trim($duration))) {
+                    $oVideo->length = $duration;
+                    $oVideo->save();
+                    echo $oVideo->id . " saved \n";
+                }
+            }
+
+
+        }
+    }
     public function actionSpider() {
         $url = "http://207.226.142.113/youtube.php?k=";
-        $channelList = ['PLFgquLnL59akA2PflFpeQG9L01VFg90wS', 'PL8fVUTBmJhHJmpP7sLb9JfLtdwCmYX9xC'];
+        $channelList = ['PL4Yp_5ExVAU0W71_e5qQmRiIHmE1rdQFu', 'PLiCvVJzBupKnKoAJR3T8NxXwA5mPeBD8W', 'PL3ZQ5CpNulQldOL3T8g8k1mgWWysJfE9w', 'PLFgquLnL59alCl_2TQvOiD5Vgm1hCaGSI'];
         foreach($channelList as $channel) {
             $curl = new Curl();
             $resp = $curl->get($url . $channel);
@@ -34,7 +81,7 @@ class YoutubeController extends BaseController
             foreach($videoList['items'] as $video) {
                 $cat = $videoList['cat'];
                 $videoAr = $this->saveVideo("youtube/". $video['videoId'], 'http://207.226.142.113/youtube_' . $video['videoId'] . '.mp4', $video['url'], $video['title'], $video['description']
-                    , $video['thumbnail'], "youtube");
+                    , $video['thumbnail'], "youtube", isset($video['duration']) ? $video['duration'] : 0);
                 if (!$videoAr) {
                     continue;
                 }
