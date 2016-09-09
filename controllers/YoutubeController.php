@@ -241,9 +241,9 @@ class YoutubeController extends BaseController
             $videoCount = new MvVideoCount();
             $videoCount->video_id = $mvVideo->id;
         }
-        $videoCount->like = $like;
-        $videoCount->bury = $bury;
-        $videoCount->played = $playCount;
+        $videoCount->like = empty($like) ? rand(0, 1000) : $like;
+        $videoCount->bury = empty($bury) ? rand(0, 20) : $bury;
+        $videoCount->played = empty($playCount) ? rand(0, 1000) : $playCount;
         if (!$videoCount->save()) {
             $errors = array_merge($errors, $videoCount->getErrors());
             $this->error($errors);
