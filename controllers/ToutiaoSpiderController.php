@@ -67,7 +67,7 @@ class ToutiaoSpiderController extends BaseController
                     "Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
                 ]);
                  $newsResp = $curl->get($url);
-                file_put_contents("/tmp/news_data_". date('YmdHis'), $newsResp);
+                //file_put_contents("/tmp/news_data_". date('YmdHis'), $newsResp);
 
                 $newsList = json_decode($newsResp, true);
                 $artIds = [];

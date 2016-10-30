@@ -80,14 +80,21 @@ class YoutubeController extends BaseController
 //            exit;
             foreach($videoList['items'] as $video) {
                 $cat = $videoList['cat'];
+                $vexists = Video::findOne(['key' => "youtube/". $video['videoId']]);
+                if ($vexists) {
+                    echo "\tVideo " . $vexists->id . " $cat >>> Exists.\n";
+                    continue;
+                }
                 $videoAr = $this->saveVideo("youtube/". $video['videoId'], 'http://207.226.142.113/youtube_' . $video['videoId'] . '.mp4', $video['url'], $video['title'], $video['description']
                     , $video['thumbnail'], "youtube", isset($video['duration']) ? $video['duration'] : 0);
+                //echo "\tVideo " . $videoAr->id . " $cat >>> Exists.\n";
                 if (!$videoAr) {
+                    echo "\tVideo youtube/". $video['videoId'] . " http://207.226.142.113/youtube_" . $video['videoId'] . ".mp4 $cat >>> False.\n";
                     continue;
                 }
                 $tags = [$cat];
                 $this->saveTag($tags, $videoAr->id, $errors);
-                echo "\tVideo " . $videoAr->id . " >>> Done.\n";
+                echo "\tVideo " . $videoAr->id . " $cat >>> Done.\n";
 
             }
         }
@@ -189,6 +196,17 @@ class YoutubeController extends BaseController
 
         $video = Video::findOne(['key' => $key]);
         if (!$video) {
+            $handle = curl_init($url);
+            curl_setopt($handle, CURLOPT_RETURNTRANSFER, TRUE);
+
+            curl_setopt($handle, CURLOPT_HEADER, true); // header will be at output
+            curl_setopt($handle, CURLOPT_NOBODY, true);
+            curl_exec($handle);
+            /* Check for 404 (file not found). */
+            $httpCode = curl_getinfo($handle, CURLINFO_HTTP_CODE);
+            if ($httpCode == 404) {
+                return false;
+            }
             $video = new Video();
             $video->key = $key;
             $video->status = Video::STATUS_ACTIVE;
@@ -241,9 +259,9 @@ class YoutubeController extends BaseController
             $videoCount = new MvVideoCount();
             $videoCount->video_id = $mvVideo->id;
         }
-        $videoCount->like = empty($like) ? rand(0, 1000) : $like;
+        $videoCount->like = empty($like) ? rand(0, 100) : $like;
         $videoCount->bury = empty($bury) ? rand(0, 20) : $bury;
-        $videoCount->played = empty($playCount) ? rand(0, 1000) : $playCount;
+        $videoCount->played = empty($playCount) ? rand(1000, 10000) : $playCount;
         if (!$videoCount->save()) {
             $errors = array_merge($errors, $videoCount->getErrors());
             $this->error($errors);

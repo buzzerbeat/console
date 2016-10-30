@@ -726,7 +726,7 @@ class MicroVideoSpiderController extends BaseController
                         $playNum = rand(200, 800) * (intval($likeNum) + intval($buryNum));
                         $createTime = isset($one['date']) ? strtotime($one['date']) : time();
                         $key = 'yidian/' . $one['itemid'];
-                        if($likeNum <= 50){
+                        if($likeNum <= 20){
                             $filterNum++;
                         	continue;
                         }
